@@ -11,21 +11,13 @@ const fallbackModules = [
 // строк (компонент/повторяемое поле в Strapi). Суммаризацию безопаснее выполнять
 // серверным webhook/cron и сохранять в aiSummary, а не вызывать ИИ из браузера.
 async function getModules() {
-  const url = window.STRAPI_URL?.replace(/\/$/, '');
+  const url = window.STRAPI_URL;
   if (!url) return fallbackModules;
   try {
     const response = await fetch(`${url}/api/modules?populate=*&sort=order:asc`);
-    if (!response.ok) throw new Error(`Strapi returned ${response.status}`);
     const json = await response.json();
-    if (!Array.isArray(json.data) || json.data.length === 0) throw new Error('Strapi returned no modules');
-    return json.data.map(entry => {
-      const data = entry.attributes ? { id: entry.id, ...entry.attributes } : entry;
-      return { ...data, summary: data.aiSummary };
-    });
-  } catch (error) {
-    console.warn('Не удалось загрузить модули из Strapi, используются встроенные данные.', error);
-    return fallbackModules;
-  }
+    return json.data.map(({ id, attributes }) => ({ id, ...attributes, summary: attributes.aiSummary }));
+  } catch { return fallbackModules; }
 }
 
 let modules = [], active = 0;
