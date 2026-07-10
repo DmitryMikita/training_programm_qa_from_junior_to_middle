@@ -6,18 +6,57 @@ const fallbackModules = [
   { id: 5, title: 'SQL и PostgreSQL', status: 'Запланирован', score: '—', summary: 'Уверенные JOIN, CTE, оконные функции и чтение планов выполнения запросов.', description: 'Переходим от базовых запросов к аналитическому SQL: GROUP BY, HAVING, EXISTS, CTE, оконные функции, транзакции и индексы. Фокус — на задачах, которые QA решает в продукте.', program: ['JOIN, GROUP BY, HAVING и подзапросы', 'CTE и оконные функции', 'Транзакции, изоляция и блокировки', 'Индексы и EXPLAIN ANALYZE'], homework: 'Решите пять задач на JOIN и три задачи на оконные функции. Для одного запроса объясните EXPLAIN ANALYZE.' }
 ];
 
-// Замените адрес CMS при подключении проекта. Поля Strapi: title, status, score,
-// aiSummary, description, program, homework, order. Поле program — JSON-массив
-// строк (компонент/повторяемое поле в Strapi). Суммаризацию безопаснее выполнять
-// серверным webhook/cron и сохранять в aiSummary, а не вызывать ИИ из браузера.
+const PROGRAM_STATUS = Object.freeze({
+  PLANNED: 0,
+  NEXT: 1,
+  IN_PROGRESS: 2,
+  COMPLETED: 3,
+});
+
+const PROGRAM_STATUS_LABEL = Object.freeze({
+  [PROGRAM_STATUS.PLANNED]: 'Запланирован',
+  [PROGRAM_STATUS.NEXT]: 'Далее',
+  [PROGRAM_STATUS.IN_PROGRESS]: 'В процессе',
+  [PROGRAM_STATUS.COMPLETED]: 'Завершён',
+});
+
+function mapSupabaseModule(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    status: PROGRAM_STATUS_LABEL[row.status] ?? 'Неизвестно',
+    score: row.score ?? '—',
+    summary: row.aiSummary ?? '',
+    description: row.description ?? '',
+    program: Array.isArray(row.program) ? row.program : [],
+    homework: row.ri_homework?.[0]?.homework ?? '',
+  };
+}
+
 async function getModules() {
-  const url = window.STRAPI_URL;
-  if (!url) return fallbackModules;
+  const { url, publishableKey } = window.SUPABASE_CONFIG ?? {};
+  if (!url || !publishableKey) return fallbackModules;
+
   try {
-    const response = await fetch(`${url}/api/modules?populate=*&sort=order:asc`);
-    const json = await response.json();
-    return json.data.map(({ id, attributes }) => ({ id, ...attributes, summary: attributes.aiSummary }));
-  } catch { return fallbackModules; }
+    const endpoint = new URL('/rest/v1/ri_programm', url);
+    endpoint.searchParams.set('select', 'id,title,status,score,aiSummary,description,program,ri_homework(homework)');
+    endpoint.searchParams.set('order', 'id.asc');
+
+    const response = await fetch(endpoint, {
+      headers: {
+        apikey: publishableKey,
+        Authorization: `Bearer ${publishableKey}`,
+      },
+    });
+
+    if (!response.ok) throw new Error(`Supabase returned ${response.status}`);
+    const rows = await response.json();
+    if (!Array.isArray(rows) || rows.length === 0) throw new Error('Supabase returned no modules');
+    return rows.map(mapSupabaseModule);
+  } catch (error) {
+    console.warn('Не удалось загрузить программу из Supabase, используются встроенные данные.', error);
+    return fallbackModules;
+  }
 }
 
 let modules = [], active = 0;
