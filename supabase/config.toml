@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.update-program]
 verify_jwt = false
+
+[functions.set-program-score]
+verify_jwt = false
