@@ -1,0 +1,4 @@
+project_id = "ricfhnlqurfusvqbtryu"
+
+[functions.generate-program-summary]
+verify_jwt = false
