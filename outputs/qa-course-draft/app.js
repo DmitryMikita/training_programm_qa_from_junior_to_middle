@@ -21,12 +21,13 @@ const PROGRAM_STATUS_LABEL = Object.freeze({
 });
 
 function mapSupabaseModule(row) {
+  const summary = Array.isArray(row.ri_summary) ? row.ri_summary[0] : row.ri_summary;
   return {
     id: row.id,
     title: row.title,
     status: PROGRAM_STATUS_LABEL[row.status] ?? 'Неизвестно',
     score: row.score ?? '—',
-    summary: row.aiSummary ?? '',
+    summary: summary?.content ?? '',
     description: row.description ?? '',
     program: Array.isArray(row.program) ? row.program : [],
     homework: row.ri_homework?.[0]?.homework ?? '',
@@ -39,7 +40,7 @@ async function getModules() {
 
   try {
     const endpoint = new URL('/rest/v1/ri_programm', url);
-    endpoint.searchParams.set('select', 'id,title,status,score,aiSummary,description,program,ri_homework(homework)');
+    endpoint.searchParams.set('select', 'id,title,status,score,description,program,ri_homework(homework),ri_summary(content,status)');
     endpoint.searchParams.set('order', 'id.asc');
 
     const response = await fetch(endpoint, {
