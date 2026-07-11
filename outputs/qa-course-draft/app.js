@@ -20,10 +20,13 @@ const PROGRAM_STATUS_LABEL = Object.freeze({
   [PROGRAM_STATUS.COMPLETED]: 'Завершён',
 });
 
+const APP_VERSION = '1.0.0';
+
 function mapSupabaseModule(row) {
   const summary = Array.isArray(row.ri_summary) ? row.ri_summary[0] : row.ri_summary;
   return {
     id: row.id,
+    statusCode: row.status,
     title: row.title,
     status: PROGRAM_STATUS_LABEL[row.status] ?? 'Неизвестно',
     score: row.score ?? '—',
@@ -74,16 +77,17 @@ function cardStyle(i) {
 }
 function home() {
   app.innerHTML = `<div class="shell"><header class="topbar"><div class="brand"><span class="brand-mark">Q</span> QA Progress</div><span class="chip">Путь к Middle · 2026</span></header><section class="hero"><div><div class="eyebrow">Персональная программа развития</div><h1>Тестируй осознанно.<br>Расти уверенно.</h1><p>Практический маршрут от Junior к Middle QA: модули, домашние задания, интервью и измеримый прогресс.</p></div><aside class="progress-box"><small>Пройдено программы</small><strong>1 из ${modules.length} модулей</strong><div class="progressbar"><i></i></div></aside></section><div class="section-head"><h2>Модули программы</h2><div class="controls"><button aria-label="Предыдущий модуль" id="prev">←</button><button aria-label="Следующий модуль" id="next">→</button></div></div><section class="carousel-wrap"><div class="orbit"></div>${modules.map((m,i) => `<button class="module-card ${i === active ? 'active':''}" data-id="${i}" style="${cardStyle(i)}"><div class="no">МОДУЛЬ ${String(i+1).padStart(2,'0')}</div><h3>${esc(m.title)}</h3><p>${esc(m.summary)}</p><div class="card-bottom"><span class="status">${esc(m.status)}</span><span class="score">${esc(m.score)} <span>/ 5</span></span></div></button>`).join('')}</section><p class="tip">Выберите модуль или листайте круг <b>← →</b></p><button class="quiet-add" id="add-module" aria-label="Добавить модуль" title="Добавить модуль">+</button></div>`;
+  document.querySelector('.chip').textContent += ` · v${APP_VERSION}`;
   document.querySelector('#prev').onclick = () => { active = (active - 1 + modules.length) % modules.length; home(); };
   document.querySelector('#next').onclick = () => { active = (active + 1) % modules.length; home(); };
   document.querySelectorAll('.module-card').forEach(el => el.onclick = () => detail(+el.dataset.id));
-  document.querySelector('#add-module').onclick = openPinModal;
+  document.querySelector('#add-module').onclick = () => openPinModal(createModulePage);
 }
 
-function openPinModal() {
+function openPinModal(onVerified = createModulePage) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
-  overlay.innerHTML = `<section class="pin-modal" role="dialog" aria-modal="true" aria-labelledby="pin-title"><div class="eyebrow">Проверка доступа</div><h2 id="pin-title">Введите код</h2><p>Четыре цифры для перехода к добавлению модуля.</p><input id="pin-input" class="pin-input" type="password" inputmode="numeric" autocomplete="one-time-code" maxlength="4" aria-describedby="pin-error"><div class="field-error" id="pin-error" aria-live="polite"></div></section>`;
+  overlay.innerHTML = `<section class="pin-modal" role="dialog" aria-modal="true" aria-labelledby="pin-title"><div class="eyebrow">Проверка доступа</div><h2 id="pin-title">Введите код</h2><p>Четыре цифры для управления модулями.</p><input id="pin-input" class="pin-input" type="password" inputmode="numeric" autocomplete="one-time-code" maxlength="4" aria-describedby="pin-error"><div class="field-error" id="pin-error" aria-live="polite"></div></section>`;
   document.body.append(overlay);
   const input = overlay.querySelector('#pin-input');
   const error = overlay.querySelector('#pin-error');
@@ -103,7 +107,7 @@ function openPinModal() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Не удалось проверить код');
       if (result.valid) {
-        adminPin = input.value; close(); createModulePage(); return;
+        adminPin = input.value; close(); onVerified(); return;
       }
       input.classList.add('invalid'); error.textContent = 'Неверный код'; input.value = '';
     } catch (requestError) {
@@ -176,12 +180,62 @@ function createModulePage() {
     }
   });
 }
+function editModulePage(index) {
+  if (!adminPin) return detail(index);
+  const module = modules[index];
+  if (!module) return home();
+  const program = Array.isArray(module.program) && module.program.length ? module.program : [''];
+  const statusCode = Number.isInteger(module.statusCode) ? module.statusCode : Number(Object.keys(PROGRAM_STATUS_LABEL).find(key => PROGRAM_STATUS_LABEL[key] === module.status));
+  const statusOptions = Object.entries(PROGRAM_STATUS_LABEL).map(([value, label]) => `<option value="${value}" ${Number(value) === statusCode ? 'selected' : ''}>${esc(label)}</option>`).join('');
+  app.innerHTML = `<div class="shell create-view"><button class="back" id="cancel-edit">← К модулю</button><section class="create-banner"><div class="eyebrow">Редактирование модуля</div><h1>${esc(module.title)}</h1><p>Измените содержание модуля и сохраните результат.</p></section><form class="create-form" id="edit-form" novalidate><label class="form-field"><span>Название модуля</span><input name="title" type="text" autocomplete="off" value="${esc(module.title)}"><small class="field-error"></small></label><label class="form-field"><span>Краткое описание</span><textarea name="description" rows="5">${esc(module.description)}</textarea><small class="field-error"></small></label><label class="form-field"><span>Статус</span><select name="status"><option value="">Выберите статус</option>${statusOptions}</select><small class="field-error"></small></label><fieldset class="program-fields"><legend>Программа</legend><div id="program-list"></div><button type="button" class="secondary-btn" id="add-program-item">+ Добавить пункт</button></fieldset><label class="form-field"><span>Домашнее задание <em>необязательно</em></span><textarea name="homework" rows="5">${esc(module.homework)}</textarea><small class="field-error"></small></label><div class="form-message" id="form-message" aria-live="polite"></div><div class="form-actions"><button type="button" class="secondary-btn" id="clear-form">Очистить</button><button type="submit" class="primary-btn" id="submit-module"><span>Сохранить</span><i class="loader" aria-hidden="true"></i></button></div></form></div>`;
+  const form = document.querySelector('#edit-form'), list = document.querySelector('#program-list');
+  const message = document.querySelector('#form-message'), submit = document.querySelector('#submit-module');
+  const addProgramItem = (value = '') => {
+    const row = document.createElement('div'); row.className = 'program-row';
+    row.innerHTML = `<label class="form-field"><span>Пункт программы</span><input type="text" class="program-input" value="${esc(typeof value === 'string' ? value : value?.title ?? '')}"><small class="field-error"></small></label><button type="button" class="remove-program" aria-label="Удалить пункт">×</button>`;
+    row.querySelector('.remove-program').onclick = () => { if (list.children.length > 1) row.remove(); }; list.append(row);
+  };
+  const clearErrors = () => { message.textContent = ''; message.className = 'form-message'; form.querySelectorAll('.invalid').forEach(el => el.classList.remove('invalid')); form.querySelectorAll('.field-error').forEach(el => el.textContent = ''); };
+  const markInvalid = (input, text) => { input.classList.add('invalid'); input.closest('.form-field').querySelector('.field-error').textContent = text; };
+  program.forEach(addProgramItem);
+  document.querySelector('#add-program-item').onclick = () => addProgramItem();
+  document.querySelector('#clear-form').onclick = () => { form.elements.title.value = ''; form.elements.description.value = ''; form.elements.status.value = ''; form.elements.homework.value = ''; list.innerHTML = ''; addProgramItem(); clearErrors(); };
+  document.querySelector('#cancel-edit').onclick = () => { adminPin = null; detail(index); };
+  form.addEventListener('submit', async event => {
+    event.preventDefault(); clearErrors();
+    const titleInput = form.elements.title, descriptionInput = form.elements.description, statusInput = form.elements.status;
+    const programInputs = [...form.querySelectorAll('.program-input')]; let valid = true;
+    if (!titleInput.value.trim()) { markInvalid(titleInput, 'Заполните название модуля'); valid = false; }
+    if (!descriptionInput.value.trim()) { markInvalid(descriptionInput, 'Заполните краткое описание'); valid = false; }
+    if (statusInput.value === '') { markInvalid(statusInput, 'Выберите статус'); valid = false; }
+    programInputs.forEach(input => { if (!input.value.trim()) { markInvalid(input, 'Заполните пункт программы'); valid = false; } });
+    if (!valid) return;
+    submit.disabled = true; submit.classList.add('loading');
+    try {
+      const response = await fetch(supabaseFunction('update-program'), { method: 'POST', headers: functionHeaders(), body: JSON.stringify({ pin: adminPin, id: module.id, title: titleInput.value.trim(), description: descriptionInput.value.trim(), status: Number(statusInput.value), program: programInputs.map(input => ({ title: input.value.trim() })), homework: form.elements.homework.value.trim() }) });
+      const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Не удалось сохранить модуль');
+      message.textContent = 'Изменения успешно сохранены'; message.className = 'form-message success'; adminPin = null;
+      setTimeout(() => { window.location.hash = `module-${module.id}`; window.location.reload(); }, 1500);
+    } catch (requestError) { message.textContent = requestError.message; message.className = 'form-message error'; submit.disabled = false; submit.classList.remove('loading'); }
+  });
+}
+
 function detail(index) {
   active = index; const m = modules[index];
   const program = Array.isArray(m.program) ? m.program : [];
   app.innerHTML = `<div class="shell module-view"><button class="back" id="back">← Все модули</button><section class="module-banner"><div class="eyebrow" style="color:var(--lime)">Модуль ${String(index+1).padStart(2,'0')} · программа развития</div><h1>${esc(m.title)}</h1><span class="status">${esc(m.status)} · оценка ${esc(m.score)} / 5</span></section><div class="content-grid"><div class="module-main"><article class="panel"><h2>О модуле</h2><p>${esc(m.description)}</p><h2>Результат</h2><p>Вы сможете применять изученные подходы в ежедневной работе, объяснять свои решения и уверенно проходить интервью по теме.</p></article><section class="panel module-program"><h2>Программа модуля</h2><ol>${program.map(item => `<li>${esc(typeof item === 'string' ? item : item.title)}</li>`).join('')}</ol></section></div><aside><section class="panel homework"><div class="eyebrow label">Домашнее задание</div><h2>Практика</h2><p>${esc(m.homework)}</p></section><section class="metrics" style="margin-top:22px"><div class="metric"><small>Статус</small><b>${esc(m.status)}</b></div><div class="metric"><small>Оценка</small><b>${esc(m.score)} / 5</b></div></section></aside></div><nav class="module-nav"><button class="nav-btn" id="previous" ${index===0?'disabled':''}>← Предыдущий</button><button class="nav-btn" id="following" ${index===modules.length-1?'disabled':''}>Следующий →</button></nav></div>`;
-  document.querySelector('#back').onclick = home;
+  const editButton = document.createElement('button');
+  editButton.className = 'quiet-add quiet-edit'; editButton.textContent = '✎';
+  editButton.setAttribute('aria-label', 'Редактировать модуль'); editButton.title = 'Редактировать модуль';
+  document.querySelector('.module-view').append(editButton);
+  editButton.onclick = () => openPinModal(() => editModulePage(index));
+  document.querySelector('#back').onclick = () => { history.replaceState(null, '', location.pathname + location.search); home(); };
   document.querySelector('#previous').onclick = () => index && detail(index-1);
   document.querySelector('#following').onclick = () => index < modules.length-1 && detail(index+1);
 }
-getModules().then(data => { modules = data; home(); });
+getModules().then(data => {
+  modules = data;
+  const match = location.hash.match(/^#module-(\d+)$/);
+  const index = match ? modules.findIndex(module => module.id === Number(match[1])) : -1;
+  if (index >= 0) detail(index); else home();
+});

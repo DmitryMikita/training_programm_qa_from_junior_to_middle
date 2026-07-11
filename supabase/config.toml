@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.create-program]
 verify_jwt = false
+
+[functions.update-program]
+verify_jwt = false
