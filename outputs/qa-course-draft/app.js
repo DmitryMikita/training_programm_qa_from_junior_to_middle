@@ -20,7 +20,7 @@ const PROGRAM_STATUS_LABEL = Object.freeze({
   [PROGRAM_STATUS.COMPLETED]: 'Завершён',
 });
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.1.1';
 
 function mapSupabaseModule(row) {
   const summary = Array.isArray(row.ri_summary) ? row.ri_summary[0] : row.ri_summary;
@@ -208,7 +208,7 @@ function openScoreModal(index) {
       const response = await fetch(supabaseFunction('set-program-score'), { method: 'POST', headers: functionHeaders(), body: JSON.stringify({ pin: adminPin, id: module.id, score }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Не удалось сохранить оценку');
-      module.score = String(Number(result.score)); adminPin = null; overlay.remove(); detail(index);
+      module.score = String(Number(result.score)); module.statusCode = PROGRAM_STATUS.COMPLETED; module.status = PROGRAM_STATUS_LABEL[PROGRAM_STATUS.COMPLETED]; adminPin = null; overlay.remove(); detail(index);
     } catch (requestError) {
       message.textContent = requestError.message; message.className = 'form-message error'; submit.disabled = false; submit.classList.remove('loading');
     }
