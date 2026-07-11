@@ -20,7 +20,7 @@ const PROGRAM_STATUS_LABEL = Object.freeze({
   [PROGRAM_STATUS.COMPLETED]: 'Завершён',
 });
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 
 function mapSupabaseModule(row) {
   const summary = Array.isArray(row.ri_summary) ? row.ri_summary[0] : row.ri_summary;
@@ -180,6 +180,42 @@ function createModulePage() {
     }
   });
 }
+function openScoreModal(index) {
+  if (!adminPin) return detail(index);
+  const module = modules[index];
+  if (!module || module.score !== '—') { adminPin = null; return detail(index); }
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<form class="score-modal" id="score-form" role="dialog" aria-modal="true" aria-labelledby="score-title" novalidate><div class="eyebrow">Оценка модуля</div><h2 id="score-title">Поставить оценку</h2><p>Оценку можно сохранить только один раз.</p><label class="form-field"><span>Оценка от 1 до 5</span><input name="score" type="text" inputmode="decimal" autocomplete="off" placeholder="Например, 4,5"><small class="field-error"></small></label><div class="form-message" aria-live="polite"></div><div class="form-actions"><button type="submit" class="primary-btn"><span>Сохранить</span><i class="loader" aria-hidden="true"></i></button></div></form>`;
+  document.body.append(overlay);
+  const form = overlay.querySelector('#score-form');
+  const input = form.elements.score;
+  const error = form.querySelector('.field-error');
+  const message = form.querySelector('.form-message');
+  const submit = form.querySelector('.primary-btn');
+  const close = () => { adminPin = null; overlay.remove(); };
+  overlay.addEventListener('click', event => { if (event.target === overlay && !submit.disabled) close(); });
+  input.addEventListener('input', () => { input.classList.remove('invalid'); error.textContent = ''; message.textContent = ''; });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const normalized = input.value.trim().replace(',', '.');
+    const score = Number(normalized);
+    if (!/^[1-5](?:\.\d)?$/.test(normalized) || !Number.isFinite(score) || score < 1 || score > 5) {
+      input.classList.add('invalid'); error.textContent = 'Введите число от 1 до 5, не более одного знака после запятой'; return;
+    }
+    submit.disabled = true; submit.classList.add('loading');
+    try {
+      const response = await fetch(supabaseFunction('set-program-score'), { method: 'POST', headers: functionHeaders(), body: JSON.stringify({ pin: adminPin, id: module.id, score }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Не удалось сохранить оценку');
+      module.score = String(Number(result.score)); adminPin = null; overlay.remove(); detail(index);
+    } catch (requestError) {
+      message.textContent = requestError.message; message.className = 'form-message error'; submit.disabled = false; submit.classList.remove('loading');
+    }
+  });
+  input.focus();
+}
+
 function editModulePage(index) {
   if (!adminPin) return detail(index);
   const module = modules[index];
@@ -229,6 +265,14 @@ function detail(index) {
   editButton.setAttribute('aria-label', 'Редактировать модуль'); editButton.title = 'Редактировать модуль';
   document.querySelector('.module-view').append(editButton);
   editButton.onclick = () => openPinModal(() => editModulePage(index));
+  if (m.score === '—') {
+    const scoreMetric = document.querySelectorAll('.metric')[1];
+    const scoreButton = document.createElement('button');
+    scoreButton.className = 'quiet-add score-action'; scoreButton.textContent = '+';
+    scoreButton.setAttribute('aria-label', 'Поставить оценку'); scoreButton.title = 'Поставить оценку';
+    scoreMetric.append(scoreButton);
+    scoreButton.onclick = () => openPinModal(() => openScoreModal(index));
+  }
   document.querySelector('#back').onclick = () => { history.replaceState(null, '', location.pathname + location.search); home(); };
   document.querySelector('#previous').onclick = () => index && detail(index-1);
   document.querySelector('#following').onclick = () => index < modules.length-1 && detail(index+1);
